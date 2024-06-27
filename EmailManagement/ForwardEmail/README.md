@@ -9,7 +9,7 @@ The `ForwardEmails.ps1` script forwards emails from a specified Microsoft 365 ma
 
 ### Description
 
-The script uses Exchange Online PowerShell to forward emails from a source mailbox to a target mailbox within a specified date range. It utilizes the `Search-Mailbox` cmdlet to ensure each email is forwarded individually. The script includes checks for necessary permissions and will attempt to use `Connect-IPPSSession` if required.
+The script uses Exchange Online PowerShell to forward emails from a source mailbox to a target mailbox within a specified date range. It utilizes Compliance Search features to ensure each email is forwarded individually.
 
 ### Parameters
 
@@ -34,12 +34,14 @@ The script uses Exchange Online PowerShell to forward emails from a source mailb
 
 ### Notes
 
-This script requires the ExchangeOnlineManagement module and appropriate permissions to use the `Search-Mailbox` cmdlet. It may attempt to use `Connect-IPPSSession` if necessary permissions are not immediately available.
+This script requires the ExchangeOnlineManagement module and appropriate permissions to perform compliance searches. 
 
-You may need to run `Connect-IPPSSession` before running this script to access compliance cmdlets. If the compliance cmdlets are not available, you will be prompted to run the following command:
+If necessary compliance cmdlets (`New-ComplianceSearch` and `New-ComplianceSearchAction`) are not available, the script will attempt to connect using `Connect-IPPSSession`.
+
+Ensure you have the necessary roles assigned to your account to use these cmdlets.
+
+You may need to run `Connect-IPPSSession` before running this script to access the required cmdlets. If the compliance cmdlets are not available, you will be prompted to run the following command:
 
 ```powershell
 Connect-IPPSSession -UserPrincipalName your_admin@yourdomain.com
 ```
-
-Ensure you have the necessary roles assigned to your account to use the `Search-Mailbox` cmdlet.

@@ -208,7 +208,7 @@ function Get-UserConfirmation {
 
 # Main script execution
 try {
-    Write-Log "Script started in $($TestMode ? 'TEST' : 'LIVE') mode"
+    Write-Log "Script started in $(if ($TestMode) { 'TEST' } else { 'LIVE' }) mode"
 
     # Check environment
     if (-not (Test-Environment)) {

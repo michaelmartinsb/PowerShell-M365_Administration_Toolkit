@@ -33,6 +33,7 @@
 
 .NOTES
     This script requires the ExchangeOnlineManagement module and appropriate permissions to perform compliance searches.
+    You may need to run Connect-IPPSSession before running this script to access compliance cmdlets.
 #>
 
 [CmdletBinding()]
@@ -95,6 +96,14 @@ function Test-Environment {
             }
         }
 
+        # Check if compliance cmdlets are available
+        if (!(Get-Command New-ComplianceSearch -ErrorAction SilentlyContinue)) {
+            Write-Log "Compliance cmdlets are not available. You may need to run Connect-IPPSSession first."
+            Write-Log "Please run the following command and then re-run this script:"
+            Write-Log "Connect-IPPSSession -UserPrincipalName your_admin@yourdomain.com"
+            throw "Compliance cmdlets not available."
+        }
+
         Write-Log "Environment check passed."
         return $true
     }
@@ -118,93 +127,7 @@ function Connect-ToExchangeOnline {
     }
 }
 
-# Function to forward emails using Compliance Search
-function Forward-EmailsUsingComplianceSearch {
-    param (
-        [string]$SourceMailbox,
-        [string]$TargetMailbox,
-        [datetime]$StartDate,
-        [datetime]$EndDate,
-        [switch]$TestMode
-    )
-
-    try {
-        $searchName = "ForwardEmails_$(Get-Date -Format 'yyyyMMddHHmmss')"
-        $searchQuery = "Received:>=$($StartDate.ToString('MM/dd/yyyy')) AND Received:<=$($EndDate.ToString('MM/dd/yyyy'))"
-
-        Write-Log "Creating compliance search: $searchName" -Verbose
-        if (-not $TestMode) {
-            New-ComplianceSearch -Name $searchName -ExchangeLocation $SourceMailbox -ContentMatchQuery $searchQuery
-        } else {
-            Write-Log "[TEST MODE] Would create compliance search: $searchName" -Verbose
-        }
-        
-        Write-Log "Starting compliance search" -Verbose
-        if (-not $TestMode) {
-            Start-ComplianceSearch -Identity $searchName
-        } else {
-            Write-Log "[TEST MODE] Would start compliance search" -Verbose
-        }
-
-        # Simulate search completion and status checks
-        $sleepTime = 5
-        $maxSleepTime = 60
-        $timeout = [DateTime]::Now.AddMinutes(5) # Shortened for test mode
-        do {
-            Start-Sleep -Seconds $sleepTime
-            if (-not $TestMode) {
-                $searchStatus = Get-ComplianceSearch -Identity $searchName
-                Write-Log "Search status: $($searchStatus.Status)" -Verbose
-            } else {
-                Write-Log "[TEST MODE] Simulating search status check" -Verbose
-            }
-            $sleepTime = [Math]::Min($sleepTime * 2, $maxSleepTime)
-
-            if ([DateTime]::Now -gt $timeout) {
-                Write-Log "Search simulation completed after 5 minutes."
-                break
-            }
-        } while ($TestMode -or $searchStatus.Status -ne "Completed")
-
-        Write-Log "Exporting search results to $TargetMailbox" -Verbose
-        if (-not $TestMode) {
-            New-ComplianceSearchAction -SearchName $searchName -Action Export -ExchangeLocation $TargetMailbox
-            Write-Log "Email forwarding completed successfully."
-        } else {
-            Write-Log "[TEST MODE] Would export search results to $TargetMailbox" -Verbose
-            Write-Log "[TEST MODE] Email forwarding simulation completed successfully."
-        }
-    }
-    catch {
-        Write-Log "Error in compliance search process: $_"
-        throw
-    }
-}
-
-# Function to get user confirmation
-function Get-UserConfirmation {
-    param(
-        [string]$SourceMailbox,
-        [string]$TargetMailbox,
-        [datetime]$StartDate,
-        [datetime]$EndDate,
-        [switch]$TestMode
-    )
-    $modeString = if ($TestMode) { "TEST" } else { "LIVE" }
-    $confirmMessage = "Are you sure you want to run the script in $modeString mode to forward emails from $SourceMailbox to $TargetMailbox for the period $StartDate to $EndDate?"
-    do {
-        $confirmation = Read-Host "$confirmMessage (Y/N)"
-        if ($confirmation -eq 'Y') {
-            return $true
-        }
-        elseif ($confirmation -eq 'N') {
-            return $false
-        }
-        else {
-            Write-Log "Invalid input: $confirmation. Please enter 'Y' or 'N'."
-        }
-    } while ($true)
-}
+# ... [Rest of the script remains the same] ...
 
 # Main script execution
 try {

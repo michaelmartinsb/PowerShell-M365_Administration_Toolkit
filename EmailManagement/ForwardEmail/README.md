@@ -35,4 +35,8 @@ The script uses Exchange Online PowerShell to forward emails from a source mailb
 
 ### Notes
 
-This script requires the ExchangeOnlineManagement module and appropriate permissions to perform compliance searches.
+This script requires the ExchangeOnlineManagement module and appropriate permissions to perform compliance searches. You may need to run `Connect-IPPSSession` before running this script to access compliance cmdlets. If the compliance cmdlets are not available, you will be prompted to run the following command:
+
+```powershell
+Connect-IPPSSession -UserPrincipalName your_admin@yourdomain.com
+```

@@ -18,21 +18,21 @@ The script uses Exchange Online PowerShell to forward emails from a source mailb
 - **StartDate**: The start date for the email search range.
 - **EndDate**: The end date for the email search range. Defaults to the current date if not specified.
 - **LogFilePath**: The path where the log file will be created. Defaults to "EmailForwardLog_[timestamp].txt" in the current directory.
+- **TestMode**: If specified, the script will run in test mode without actually forwarding any emails.
 - **Verbose**: If specified, provides more detailed logging information.
 
 ### Usage
 
 ```powershell
-.\ForwardEmails.ps1 -SourceMailbox "user@domain.com" -TargetMailbox "external@example.com" -StartDate "06/01/2024" -EndDate "06/30/2024" -Verbose
+.\ForwardEmails.ps1 -SourceMailbox "user@domain.com" -TargetMailbox "external@example.com" -StartDate "06/01/2024" -EndDate "06/30/2024" -TestMode -Verbose
 ```
 
 ### Example
 
 ```powershell
-.\ForwardEmails.ps1 -SourceMailbox "user@domain.com" -TargetMailbox "external@example.com" -StartDate "06/01/2024" -EndDate "06/30/2024" -Verbose
+.\ForwardEmails.ps1 -SourceMailbox "user@domain.com" -TargetMailbox "external@example.com" -StartDate "06/01/2024" -EndDate "06/30/2024" -TestMode -Verbose
 ```
 
 ### Notes
 
 This script requires the ExchangeOnlineManagement module and appropriate permissions to perform compliance searches.
-```

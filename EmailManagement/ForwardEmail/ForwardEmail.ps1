@@ -5,6 +5,7 @@
 .DESCRIPTION
     This script uses Exchange Online PowerShell to forward emails from a source mailbox to a target mailbox
     within a specified date range. It uses the Compliance Search feature for email discovery and forwarding.
+    This script is designed for forwarding emails to external (third-party) mailboxes.
 
 .PARAMETER SourceMailbox
     The email address of the source mailbox.
@@ -18,17 +19,17 @@
 .PARAMETER EndDate
     The end date for the email search range. Defaults to the current date if not specified.
 
-.PARAMETER TargetFolder
-    The folder in the target mailbox where forwarded emails will be placed. Defaults to "ForwardedEmails".
-
 .PARAMETER LogFilePath
     The path where the log file will be created. Defaults to "EmailForwardLog_[timestamp].txt" in the current directory.
+
+.PARAMETER TestMode
+    If specified, the script will run in test mode without actually forwarding any emails.
 
 .PARAMETER Verbose
     If specified, provides more detailed logging information.
 
 .EXAMPLE
-    .\EnhancedEmailForward.ps1 -SourceMailbox "user@domain.com" -TargetMailbox "target@domain.com" -StartDate "06/01/2024" -EndDate "06/30/2024" -Verbose
+    .\ForwardEmails.ps1 -SourceMailbox "user@domain.com" -TargetMailbox "external@example.com" -StartDate "06/01/2024" -EndDate "06/30/2024" -TestMode -Verbose
 
 .NOTES
     This script requires the ExchangeOnlineManagement module and appropriate permissions to perform compliance searches.
@@ -49,11 +50,11 @@ param(
     [datetime]$EndDate = (Get-Date),  # Defaults to current date if not specified
     
     [Parameter(Mandatory=$false)]
-    [string]$TargetFolder = "ForwardedEmails",
-    
-    [Parameter(Mandatory=$false)]
     [ValidateScript({Test-Path (Split-Path $_) -PathType 'Container'})]
-    [string]$LogFilePath = "EmailForwardLog_$(Get-Date -Format 'yyyyMMddHHmmss').txt"
+    [string]$LogFilePath = "EmailForwardLog_$(Get-Date -Format 'yyyyMMddHHmmss').txt",
+
+    [Parameter(Mandatory=$false)]
+    [switch]$TestMode
 )
 
 # Function to write to log file
@@ -124,7 +125,7 @@ function Forward-EmailsUsingComplianceSearch {
         [string]$TargetMailbox,
         [datetime]$StartDate,
         [datetime]$EndDate,
-        [string]$TargetFolder
+        [switch]$TestMode
     )
 
     try {
@@ -132,34 +133,50 @@ function Forward-EmailsUsingComplianceSearch {
         $searchQuery = "Received:>=$($StartDate.ToString('MM/dd/yyyy')) AND Received:<=$($EndDate.ToString('MM/dd/yyyy'))"
 
         Write-Log "Creating compliance search: $searchName" -Verbose
-        New-ComplianceSearch -Name $searchName -ExchangeLocation $SourceMailbox -ContentMatchQuery $searchQuery
+        if (-not $TestMode) {
+            New-ComplianceSearch -Name $searchName -ExchangeLocation $SourceMailbox -ContentMatchQuery $searchQuery
+        } else {
+            Write-Log "[TEST MODE] Would create compliance search: $searchName" -Verbose
+        }
         
         Write-Log "Starting compliance search" -Verbose
-        Start-ComplianceSearch -Identity $searchName
+        if (-not $TestMode) {
+            Start-ComplianceSearch -Identity $searchName
+        } else {
+            Write-Log "[TEST MODE] Would start compliance search" -Verbose
+        }
 
-        # Wait for the search to complete with exponential backoff and timeout
+        # Simulate search completion and status checks
         $sleepTime = 5
         $maxSleepTime = 60
-        $timeout = [DateTime]::Now.AddMinutes(30)
+        $timeout = [DateTime]::Now.AddMinutes(5) # Shortened for test mode
         do {
             Start-Sleep -Seconds $sleepTime
-            $searchStatus = Get-ComplianceSearch -Identity $searchName
-            Write-Log "Search status: $($searchStatus.Status)" -Verbose
+            if (-not $TestMode) {
+                $searchStatus = Get-ComplianceSearch -Identity $searchName
+                Write-Log "Search status: $($searchStatus.Status)" -Verbose
+            } else {
+                Write-Log "[TEST MODE] Simulating search status check" -Verbose
+            }
             $sleepTime = [Math]::Min($sleepTime * 2, $maxSleepTime)
 
             if ([DateTime]::Now -gt $timeout) {
-                Write-Log "Search timed out after 30 minutes."
-                throw "Search timeout"
+                Write-Log "Search simulation completed after 5 minutes."
+                break
             }
-        } while ($searchStatus.Status -ne "Completed")
+        } while ($TestMode -or $searchStatus.Status -ne "Completed")
 
         Write-Log "Exporting search results to $TargetMailbox" -Verbose
-        New-ComplianceSearchAction -SearchName $searchName -Action Export -ExchangeLocation $TargetMailbox -TargetFolder $TargetFolder
-
-        Write-Log "Email forwarding completed successfully."
+        if (-not $TestMode) {
+            New-ComplianceSearchAction -SearchName $searchName -Action Export -ExchangeLocation $TargetMailbox
+            Write-Log "Email forwarding completed successfully."
+        } else {
+            Write-Log "[TEST MODE] Would export search results to $TargetMailbox" -Verbose
+            Write-Log "[TEST MODE] Email forwarding simulation completed successfully."
+        }
     }
     catch {
-        Write-Log "Error forwarding emails using Compliance Search: $_"
+        Write-Log "Error in compliance search process: $_"
         throw
     }
 }
@@ -170,9 +187,11 @@ function Get-UserConfirmation {
         [string]$SourceMailbox,
         [string]$TargetMailbox,
         [datetime]$StartDate,
-        [datetime]$EndDate
+        [datetime]$EndDate,
+        [switch]$TestMode
     )
-    $confirmMessage = "Are you sure you want to forward emails from $SourceMailbox to $TargetMailbox for the period $StartDate to $EndDate?"
+    $modeString = if ($TestMode) { "TEST" } else { "LIVE" }
+    $confirmMessage = "Are you sure you want to run the script in $modeString mode to forward emails from $SourceMailbox to $TargetMailbox for the period $StartDate to $EndDate?"
     do {
         $confirmation = Read-Host "$confirmMessage (Y/N)"
         if ($confirmation -eq 'Y') {
@@ -189,7 +208,7 @@ function Get-UserConfirmation {
 
 # Main script execution
 try {
-    Write-Log "Script started"
+    Write-Log "Script started in $($TestMode ? 'TEST' : 'LIVE') mode"
 
     # Check environment
     if (-not (Test-Environment)) {
@@ -198,8 +217,8 @@ try {
 
     Connect-ToExchangeOnline
 
-    if (Get-UserConfirmation -SourceMailbox $SourceMailbox -TargetMailbox $TargetMailbox -StartDate $StartDate -EndDate $EndDate) {
-        Forward-EmailsUsingComplianceSearch -SourceMailbox $SourceMailbox -TargetMailbox $TargetMailbox -StartDate $StartDate -EndDate $EndDate -TargetFolder $TargetFolder
+    if (Get-UserConfirmation -SourceMailbox $SourceMailbox -TargetMailbox $TargetMailbox -StartDate $StartDate -EndDate $EndDate -TestMode:$TestMode) {
+        Forward-EmailsUsingComplianceSearch -SourceMailbox $SourceMailbox -TargetMailbox $TargetMailbox -StartDate $StartDate -EndDate $EndDate -TestMode:$TestMode
     }
     else {
         Write-Log "Operation cancelled by user."

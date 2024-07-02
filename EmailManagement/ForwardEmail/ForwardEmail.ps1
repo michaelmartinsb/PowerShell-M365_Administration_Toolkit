@@ -94,25 +94,6 @@ function Test-Environment {
             }
         }
 
-        # Check if necessary compliance cmdlets are available
-        if (!(Get-Command New-ComplianceSearch -ErrorAction SilentlyContinue) -or 
-            !(Get-Command New-ComplianceSearchAction -ErrorAction SilentlyContinue)) {
-            Write-Log "Necessary compliance cmdlets are not available. Attempting to connect using Connect-IPPSSession."
-            
-            # Attempt to connect using Connect-IPPSSession
-            Connect-IPPSSession
-            
-            # Check again for necessary cmdlets
-            if (!(Get-Command New-ComplianceSearch -ErrorAction SilentlyContinue) -or 
-                !(Get-Command New-ComplianceSearchAction -ErrorAction SilentlyContinue)) {
-                Write-Log "Necessary compliance cmdlets are still not available after Connect-IPPSSession."
-                Write-Log "Please ensure you have the necessary roles assigned to your account."
-                throw "Required cmdlets not available."
-            } else {
-                Write-Log "Successfully connected using Connect-IPPSSession. Necessary cmdlets are now available."
-            }
-        }
-
         Write-Log "Environment check passed."
         return $true
     }
@@ -126,7 +107,8 @@ function Test-Environment {
 function Connect-ToExchangeOnline {
     try {
         Import-Module ExchangeOnlineManagement
-        Connect-ExchangeOnline -ShowProgress $true
+        $UserCredential = Get-Credential -Message "Enter your Exchange Online credentials"
+        Connect-ExchangeOnline -Credential $UserCredential -ShowProgress $true
         Write-Log "Successfully connected to Exchange Online."
     }
     catch {
@@ -136,7 +118,7 @@ function Connect-ToExchangeOnline {
 }
 
 # Function to forward emails using Compliance Search
-function Forward-Emails {
+function Forward-EmailsUsingComplianceSearch {
     param (
         [string]$SourceMailbox,
         [string]$TargetMailbox,
@@ -149,33 +131,47 @@ function Forward-Emails {
         $searchName = "ForwardEmails_$(Get-Date -Format 'yyyyMMddHHmmss')"
         $searchQuery = "Received:>=$($StartDate.ToString('MM/dd/yyyy')) AND Received:<=$($EndDate.ToString('MM/dd/yyyy'))"
 
-        Write-Log "Preparing to forward emails from $SourceMailbox to $TargetMailbox" -Verbose
-        Write-Log "Date range: $StartDate to $EndDate" -Verbose
-
+        Write-Log "Creating compliance search: $searchName" -Verbose
         if (-not $TestMode) {
-            # Create and run Compliance Search
             New-ComplianceSearch -Name $searchName -ExchangeLocation $SourceMailbox -ContentMatchQuery $searchQuery
-            Start-ComplianceSearch -Identity $searchName
-
-            # Wait for the search to complete
-            do {
-                Start-Sleep -Seconds 5
-                $searchStatus = Get-ComplianceSearch -Identity $searchName
-            } while ($searchStatus.Status -ne "Completed")
-
-            # Create Compliance Search Action to forward emails
-            New-ComplianceSearchAction -SearchName $searchName -ForwardTo $TargetMailbox
-
-            Write-Log "Email forwarding action created. Please check the Security & Compliance Center for results." -Verbose
         } else {
-            Write-Log "[TEST MODE] Would forward emails with the following parameters:" -Verbose
-            Write-Log "[TEST MODE] Source Mailbox: $SourceMailbox" -Verbose
-            Write-Log "[TEST MODE] Target Mailbox: $TargetMailbox" -Verbose
-            Write-Log "[TEST MODE] Search Query: $searchQuery" -Verbose
+            Write-Log "[TEST MODE] Would create compliance search: $searchName" -Verbose
+        }
+        
+        Write-Log "Starting compliance search" -Verbose
+        if (-not $TestMode) {
+            Start-ComplianceSearch -Identity $searchName
+        } else {
+            Write-Log "[TEST MODE] Would start compliance search" -Verbose
+        }
+
+        # Wait for search to complete
+        $timeout = [DateTime]::Now.AddMinutes(30)
+        do {
+            Start-Sleep -Seconds 30
+            if (-not $TestMode) {
+                $searchStatus = Get-ComplianceSearch -Identity $searchName
+                Write-Log "Search status: $($searchStatus.Status)" -Verbose
+            } else {
+                Write-Log "[TEST MODE] Simulating search status check" -Verbose
+            }
+
+            if ([DateTime]::Now -gt $timeout) {
+                throw "Search timed out after 30 minutes."
+            }
+        } while ($TestMode -or $searchStatus.Status -ne "Completed")
+
+        Write-Log "Starting compliance search action" -Verbose
+        if (-not $TestMode) {
+            New-ComplianceSearchAction -SearchName $searchName -Action Forward -TargetExchangeLocation $TargetMailbox
+            Write-Log "Email forwarding action created successfully."
+        } else {
+            Write-Log "[TEST MODE] Would forward search results to $TargetMailbox" -Verbose
+            Write-Log "[TEST MODE] Email forwarding simulation completed successfully."
         }
     }
     catch {
-        Write-Log "Error in email forwarding process: $_"
+        Write-Log "Error in compliance search process: $_"
         throw
     }
 }
@@ -217,7 +213,7 @@ try {
     Connect-ToExchangeOnline
 
     if (Get-UserConfirmation -SourceMailbox $SourceMailbox -TargetMailbox $TargetMailbox -StartDate $StartDate -EndDate $EndDate -TestMode:$TestMode) {
-        Forward-Emails -SourceMailbox $SourceMailbox -TargetMailbox $TargetMailbox -StartDate $StartDate -EndDate $EndDate -TestMode:$TestMode
+        Forward-EmailsUsingComplianceSearch -SourceMailbox $SourceMailbox -TargetMailbox $TargetMailbox -StartDate $StartDate -EndDate $EndDate -TestMode:$TestMode
     }
     else {
         Write-Log "Operation cancelled by user."

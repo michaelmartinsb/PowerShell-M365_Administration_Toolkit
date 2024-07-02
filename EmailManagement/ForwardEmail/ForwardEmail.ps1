@@ -163,8 +163,35 @@ function Forward-EmailsUsingComplianceSearch {
 
         Write-Log "Starting compliance search action" -Verbose
         if (-not $TestMode) {
-            New-ComplianceSearchAction -SearchName $searchName -Action Forward -TargetExchangeLocation $TargetMailbox
-            Write-Log "Email forwarding action created successfully."
+            $actionName = "$searchName_Action"
+            New-ComplianceSearchAction -SearchName $searchName -Preview -ActionName $actionName
+            
+            # Wait for the action to complete
+            do {
+                Start-Sleep -Seconds 30
+                $actionStatus = Get-ComplianceSearchAction -Identity $actionName
+                Write-Log "Action status: $($actionStatus.Status)" -Verbose
+                
+                if ([DateTime]::Now -gt $timeout) {
+                    throw "Action timed out after 30 minutes."
+                }
+            } while ($actionStatus.Status -ne "Completed")
+            
+            # Get the results and forward them
+            $results = Get-ComplianceSearchAction -Identity $actionName | Select-Object -ExpandProperty Results
+            $emailIds = $results | Select-String -Pattern "Subject:.*?Location:.*?Item:\s*(\S+)" -AllMatches | 
+                        ForEach-Object { $_.Matches.Groups[1].Value }
+            
+            foreach ($emailId in $emailIds) {
+                Write-Log "Forwarding email with ID: $emailId" -Verbose
+                if (-not $TestMode) {
+                    Search-Mailbox -Identity $SourceMailbox -SearchQuery "ItemId:$emailId" -TargetMailbox $TargetMailbox -TargetFolder "Inbox" -LogOnly:$false
+                } else {
+                    Write-Log "[TEST MODE] Would forward email with ID: $emailId" -Verbose
+                }
+            }
+            
+            Write-Log "Email forwarding completed successfully."
         } else {
             Write-Log "[TEST MODE] Would forward search results to $TargetMailbox" -Verbose
             Write-Log "[TEST MODE] Email forwarding simulation completed successfully."

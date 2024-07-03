@@ -103,7 +103,7 @@ function Test-Environment {
     }
 }
 
-# Function to connect to Exchange Online
+# Function to connect to Exchange Online and Security & Compliance Center
 function Connect-ToExchangeOnline {
     try {
         Import-Module ExchangeOnlineManagement
@@ -113,6 +113,19 @@ function Connect-ToExchangeOnline {
     }
     catch {
         Write-Log "Error connecting to Exchange Online: $_"
+        throw
+    }
+}
+
+function Connect-ToSecurityComplianceCenter {
+    try {
+        Import-Module ExchangeOnlineManagement
+        $UserCredential = Get-Credential -Message "Enter your Office 365 credentials for Security & Compliance Center"
+        Connect-IPPSSession -Credential $UserCredential
+        Write-Log "Successfully connected to Security & Compliance Center."
+    }
+    catch {
+        Write-Log "Error connecting to Security & Compliance Center: $_"
         throw
     }
 }
@@ -163,8 +176,8 @@ function Forward-EmailsUsingComplianceSearch {
 
         Write-Log "Starting compliance search action" -Verbose
         if (-not $TestMode) {
-            $actionName = "$searchName_Action"
-            New-ComplianceSearchAction -SearchName $searchName -Preview -ActionName $actionName
+            $actionName = "${searchName}_Action"
+            New-ComplianceSearchAction -SearchName $searchName -ActionName $actionName -Export
             
             # Wait for the action to complete
             do {
@@ -238,6 +251,7 @@ try {
     }
 
     Connect-ToExchangeOnline
+    Connect-ToSecurityComplianceCenter
 
     if (Get-UserConfirmation -SourceMailbox $SourceMailbox -TargetMailbox $TargetMailbox -StartDate $StartDate -EndDate $EndDate -TestMode:$TestMode) {
         Forward-EmailsUsingComplianceSearch -SourceMailbox $SourceMailbox -TargetMailbox $TargetMailbox -StartDate $StartDate -EndDate $EndDate -TestMode:$TestMode
